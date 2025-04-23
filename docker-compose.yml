@@ -1,0 +1,131 @@
+networks:
+  default:
+    driver: bridge
+    name: pangolin
+
+secrets:
+  cloudflare_dns_api_token:
+    # API token for Cloudflare DNS updates.
+    file: secrets/traefik/cloudflare_dns_api_token
+  server_admin_email:
+    file: secrets/traefik/server_admin_email
+  server_admin_password:
+    file: secrets/traefik/server_admin_password
+  # crowdsec_bouncer_traefik_api_key:
+  #   file: secrets/crowdsec/bouncer_traefik_api_key
+
+
+# include:
+#   - compose/traefik.yaml 
+services:
+  pangolin:
+    container_name: pangolin
+    healthcheck:
+      interval: 3s
+      retries: 5
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3001/api/v1/
+      timeout: 3s
+    image: fosrl/pangolin:1.2.0
+    ports:
+      - 3000:3000
+      - 3001:3001
+      - 3002:3002
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+
+  middleware-manager:
+    image: hhftechnology/middleware-manager:latest
+    container_name: middleware-manager
+    restart: unless-stopped
+    depends_on:
+      pangolin:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+      - ./config/traefik/rules:/rules
+      - ./config/middleware-manager/templates.yaml:/app/config/templates.yaml  # Optional for custom templates
+    environment:
+      - PANGOLIN_API_URL=http://pangolin:3001/api/v1
+      - TRAEFIK_CONF_DIR=/rules 
+      - DB_PATH=/data/middleware.db
+      - PORT=3456
+    ports:
+      - 3456:3456
+
+  traefik:
+    command:
+      - --configFile=/etc/traefik/traefik_config.yml
+    container_name: traefik
+    depends_on:
+      pangolin:
+        condition: service_healthy
+    image: traefik:v3.3.5
+    ports:
+      - 443:443
+      - 80:80
+    restart: unless-stopped
+    environment:
+      TZ: $TZ
+      CLOUDFLARE_DNS_API_TOKEN: BHSv7kkTYJIxawKiuehr4QPbmTzXOJeStKGlrYw8 #/run/secrets/cloudflare_dns_api_token
+      # CROWDSEC_LAPI_KEY: file:///run/secrets/crowdsec_bouncer_traefik_api_key
+      USERS_SERVERADMIN_EMAIL: /run/secrets/server_admin_email
+      USERS_SERVERADMIN_PASSWORD: /run/secrets/server_admin_password
+    secrets:
+      - cloudflare_dns_api_token
+      # - crowdsec_bouncer_traefik_api_key
+      - server_admin_email
+      - server_admin_password
+    volumes:
+      - ./config/traefik:/etc/traefik:ro # Volume to store the Traefik configuration
+      - ./config/traefik/rules:/rules
+      - ./config/letsencrypt:/letsencrypt # Volume to store the Let's Encrypt certificates
+      - ./config/traefik/logs:/var/log/traefik # Volume to store Traefik logs
+  crowdsec:
+    command: -t # Add test config flag to verify configuration
+    container_name: crowdsec
+    environment:
+      ACQUIRE_FILES: /var/log/traefik/*.log
+      COLLECTIONS: crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/whitelist-good-actors crowdsecurity/iptables crowdsecurity/linux
+      ENROLL_INSTANCE_NAME: pangolin-crowdsec
+      ENROLL_TAGS: docker
+      GID: "1000"
+      PARSERS: crowdsecurity/whitelists
+      # DISABLE_LOCAL_API: "true" # Only after successfully registering and validating remote agent below.
+
+      # AGENT_USERNAME: file:///run/secrets/crowdsec_agent_username
+      # AGENT_PASSWORD: file:///run/secrets/crowdsec_agent_password
+      LOCAL_API_URL: $CROWDSEC_LOCAL_API_URL
+    # secrets:
+      # - crowdsec_agent_username
+      # - crowdsec_agent_password
+    expose:
+      - 6060
+      - 8080
+    healthcheck:
+      interval: 10s
+      retries: 15
+      timeout: 10s
+      test: ["CMD", "cscli", "capi", "status"]
+    image: crowdsecurity/crowdsec:latest
+    labels:
+      - traefik.enable=false # Disable traefik for crowdsec
+    ports:
+      - 8080:8080
+      - 6060:6060 # metrics endpoint for prometheus
+    restart: unless-stopped
+    volumes:
+      - /var/log:/var/log:ro
+      # crowdsec container data
+      - ./config/crowdsec/config:/etc/crowdsec # crowdsec config
+      - ./config/crowdsec/data:/var/lib/crowdsec/data # crowdsec db
+       # log bind mounts into crowdsec
+      - ./config/crowdsec_logs/cloudserver:/logs/cloudserver:ro
+      - ./config/crowdsec_logs/auth.log:/var/log/auth.log:ro
+      - ./config/crowdsec_logs/syslog:/var/log/syslog:ro
+      - ./config/crowdsec_logs:/var/log
+      - ./config/traefik/logs:/var/log/traefik

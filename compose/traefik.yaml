@@ -1,0 +1,68 @@
+services:
+  pangolin:
+    container_name: pangolin
+    healthcheck:
+      interval: 3s
+      retries: 5
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3001/api/v1/
+      timeout: 3s
+    image: fosrl/pangolin:1.2.0
+    ports:
+      - 3000:3000
+      - 3001:3001
+      - 3002:3002
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+
+  middleware-manager:
+    image: hhftechnology/middleware-manager:latest
+    container_name: middleware-manager
+    restart: unless-stopped
+    depends_on:
+      pangolin:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+      - ./config/traefik/rules:/rules
+      - ./config/middleware-manager/templates.yaml:/app/config/templates.yaml  # Optional for custom templates
+    environment:
+      - PANGOLIN_API_URL=http://pangolin:3001/api/v1
+      - TRAEFIK_CONF_DIR=/rules 
+      - DB_PATH=/data/middleware.db
+      - PORT=3456
+    ports:
+      - 3456:3456
+
+  traefik:
+    command:
+      - --configFile=/etc/traefik/traefik_config.yml
+    container_name: traefik
+    depends_on:
+      pangolin:
+        condition: service_healthy
+    image: traefik:v3.3.5
+    ports:
+      - 443:443
+      - 80:80
+    restart: unless-stopped
+    environment:
+      TZ: $TZ
+      CLOUDFLARE_DNS_API_TOKEN: /run/secrets/cloudflare_dns_api_token
+      # CROWDSEC_LAPI_KEY: file:///run/secrets/crowdsec_bouncer_traefik_api_key
+      USERS_SERVERADMIN_EMAIL: /run/secrets/server_admin_email
+      USERS_SERVERADMIN_PASSWORD: /run/secrets/server_admin_password
+    secrets:
+      - cloudflare_dns_api_token
+      # - crowdsec_bouncer_traefik_api_key
+      - server_admin_email
+      - server_admin_password
+    volumes:
+      - ./config/traefik:/etc/traefik:ro
+      - ./config/traefik/rules:/rules
+      - ./config/letsencrypt:/letsencrypt
+      - ./config/traefik/logs:/var/log/traefik
