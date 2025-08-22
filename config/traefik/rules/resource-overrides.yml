@@ -1,8 +1,36 @@
 http:
     middlewares:
+        9df695b0934a915a:
+            headers:
+                accessControlAllowMethods:
+                    - GET
+                    - OPTIONS
+                browserXssFilter: true
+                contentTypeNosniff: true
+                customFrameOptionsValue: "SAMEORIGIN"
+                customResponseHeaders:
+                    Content-Security-Policy: default-src 'self'; frame-ancestors 'self' http://jellyfin.nasflix.org; object-src 'none'; base-uri 'self'; form-action 'self'
+                    Server: ""
+                    X-Frame-Options: SAMEORIGIN
+                    X-Robots-Tag: none,noarchive,nosnippet,notranslate,noimageindex
+                forceSTSHeader: true
+                hostsProxyHeaders:
+                    - X-Forwarded-Host
+                permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()"
+                referrerPolicy: "same-origin"
+                sslForceHost: true
+                sslProxyHeaders:
+                    X-Forwarded-Proto: https
+                sslRedirect: true
+                stsIncludeSubdomains: true
+                stsPreload: true
+                stsSeconds: "63072000"
+        add-prefix:
+            addPrefix:
+                prefix: "/api"
         authelia:
             forwardAuth:
-                address: http://authelia:9091/api/verify?rd=https://auth.yourdomain.com
+                address: "http://authelia:9091/api/authz/forward-auth"
                 authResponseHeaders:
                     - Remote-User
                     - Remote-Groups
@@ -11,7 +39,7 @@ http:
                 trustForwardHeader: true
         authentik:
             forwardAuth:
-                address: http://authentik:9000/outpost.goauthentik.io/auth/traefik
+                address: "http://authentik:9000/outpost.goauthentik.io/auth/traefik"
                 authResponseHeaders:
                     - X-authentik-username
                     - X-authentik-groups
@@ -23,6 +51,101 @@ http:
             basicAuth:
                 users:
                     - admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/
+        buffering:
+            buffering:
+                maxRequestBodyBytes: 5e+06
+                maxResponseBodyBytes: 5e+06
+                memRequestBodyBytes: 2e+06
+                memResponseBodyBytes: 2e+06
+                retryExpression: "IsNetworkError() && Attempts() < 2"
+        circuit-breaker:
+            circuitBreaker:
+                checkPeriod: 10s
+                expression: "NetworkErrorRatio() > 0.20 || ResponseCodeRatio(500, 600, 0, 600) > 0.25"
+                fallbackDuration: "30s"
+                recoveryDuration: 60s
+                responseCode: 503
+        compress:
+            compress:
+                encodings:
+                    - gzip
+                    - br
+                excludedContentTypes:
+                    - text/event-stream
+                includedContentTypes:
+                    - text/html
+                    - text/plain
+                    - application/json
+                minResponseBodyBytes: 1024
+        content-type:
+            contentType: {}
+        crowdsec:
+            plugin:
+                crowdsec-bouncer-traefik:
+                    clientTrustedIPs:
+                        - 10.0.0.0/8
+                        - 172.16.0.0/12
+                        - 192.168.0.0/16
+                        - 100.89.137.0/20
+                    crowdsecAppsecBodyLimit: "10485760"
+                    crowdsecAppsecEnabled: true
+                    crowdsecAppsecFailureBlock: true
+                    crowdsecAppsecHost: crowdsec:7422
+                    crowdsecAppsecUnreachableBlock: true
+                    crowdsecLapiHost: crowdsec:8080
+                    crowdsecLapiKey: "lHVejTNjYvCWp/UX43X062b7nNyJWrCTadkLPGXmTtg"
+                    crowdsecLapiScheme: "http"
+                    crowdsecMode: live
+                    defaultDecisionSeconds: 15
+                    enabled: true
+                    forwardedHeadersTrustedIPs:
+                        - 0.0.0.0/0
+                    httpTimeoutSeconds: "10"
+                    logLevel: INFO
+                    updateIntervalSeconds: "15"
+                    updateMaxFailure: 0
+        custom-headers-example:
+            headers:
+                customRequestHeaders:
+                    X-Custom-Request-Header: ""
+                    X-Custom-Value: value with spaces
+                    X-Script-Name: test
+                customResponseHeaders:
+                    Server: ""
+                    X-Custom-Response-Header: value
+        digest-auth:
+            digestAuth:
+                users:
+                    - test:traefik:a2688e031edb4be6a3797f3882655c05
+        error-pages:
+            errors:
+                query: "/{status}.html"
+                service: "error-handler-service"
+                status:
+                    - 500-599
+        geoblock:
+            plugin:
+                geoblock:
+                    addCountryHeader: false
+                    allowLocalRequests: false
+                    allowUnknownCountries: false
+                    api: https://get.geojs.io/v1/ip/country/{ip}
+                    apiTimeoutMs: "750"
+                    blackListMode: false
+                    cacheSize: 15
+                    countries:
+                        - DE
+                        - FR
+                    forceMonthlyUpdate: false
+                    logAllowedRequests: false
+                    logApiRequests: false
+                    logLocalRequests: false
+                    silentStartUp: false
+                    unknownCountryApiResponse: nil
+        grpc-web:
+            grpcWeb:
+                allowOrigins:
+                    - '*'
         headers-standard:
             headers:
                 accessControlAllowMethods:
@@ -31,21 +154,37 @@ http:
                     - PUT
                 browserXssFilter: true
                 contentTypeNosniff: true
-                customFrameOptionsValue: SAMEORIGIN
+                customFrameOptionsValue: "SAMEORIGIN"
                 customResponseHeaders:
+                    Server: ""
                     X-Forwarded-Proto: https
+                    X-Powered-By: ""
                     X-Robots-Tag: none,noarchive,nosnippet,notranslate,noimageindex
-                    server: ""
                 forceSTSHeader: true
                 hostsProxyHeaders:
                     - X-Forwarded-Host
-                permissionsPolicy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()
-                referrerPolicy: same-origin
+                permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()"
+                referrerPolicy: "same-origin"
                 sslProxyHeaders:
                     X-Forwarded-Proto: https
                 stsIncludeSubdomains: true
                 stsPreload: true
-                stsSeconds: 6.3072e+07
+                stsSeconds: "63072000"
+        in-flight-req:
+            inFlightReq:
+                amount: 10
+                sourceCriterion:
+                    ipStrategy:
+                        depth: 2
+                        excludedIPs:
+                            - 127.0.0.1/32
+                    requestHost: true
+        ip-allowlist:
+            ipAllowList:
+                sourceRange:
+                    - 127.0.0.1/32
+                    - 192.168.1.0/24
+                    - 10.0.0.0/8
         ip-whitelist:
             ipWhiteList:
                 sourceRange:
@@ -54,78 +193,318 @@ http:
                     - 10.0.0.0/8
         jwt-auth:
             forwardAuth:
-                address: http://jwt-auth:8080/verify
+                address: "http://jwt-auth:8080/verify"
                 authResponseHeaders:
                     - X-JWT-Sub
                     - X-JWT-Name
                     - X-JWT-Email
                 trustForwardHeader: true
         nextcloud-dav:
-            replacepathregex:
-                regex: ^/.well-known/ca(l|rd)dav
-                replacement: /remote.php/dav/
+            replacePathRegex:
+                regex: "^/.well-known/ca(l|rd)dav"
+                replacement: "/remote.php/dav/"
+        pass-tls-cert:
+            passTLSClientCert:
+                pem: true
         rate-limit:
             rateLimit:
                 average: 100
                 burst: 50
-        security-chain:
-            chain:
-                middlewares:
-                    - rate-limit@file
-                    - ip-whitelist@file
+        redirect-regex:
+            redirectRegex:
+                permanent: true
+                regex: "^http://(.*)$"
+                replacement: "https://${1}"
+        redirect-scheme:
+            redirectScheme:
+                permanent: true
+                port: 443
+                scheme: "https"
+        replace-path:
+            replacePath:
+                path: "/foo"
+        replace-path-regex:
+            replacePathRegex:
+                regex: "^/foo/(.*)"
+                replacement: "/bar/$1"
+        retry:
+            retry:
+                attempts: 3
+                initialInterval: "100ms"
+        strip-prefix:
+            stripPrefix:
+                forceSlash: true
+                prefixes:
+                    - /api
+                    - /v1
+        tinyauth:
+            forwardAuth:
+                address: "http://tinyauth:10000/api/auth/traefik"
     routers:
         1-router-auth:
             entryPoints:
                 - websecure
             middlewares:
-                - headers-standard@file
+                - 9df695b0934a915a@file
+                - rate-limit@file
                 - badger@http
             priority: 100
-            rule: Host(`hass.nasflix.org`)
-            service: 1-service@http
+            rule: "Host(`jellyfin.nasflix.org`)"
+            service: "1-service@http"
             tls:
-                certResolver: letsencrypt
+                certResolver: "letsencrypt"
         3-router-auth:
             entryPoints:
                 - websecure
             middlewares:
+                - crowdsec@file
                 - headers-standard@file
+                - rate-limit@file
                 - badger@http
             priority: 100
-            rule: Host(`crafty.nasflix.org`)
-            service: 3-service@http
+            rule: "Host(`hass.nasflix.org`)"
+            service: "3-service@http"
             tls:
-                certResolver: letsencrypt
-        4-router-auth:
+                certResolver: "letsencrypt"
+        7-router-auth:
             entryPoints:
                 - websecure
             middlewares:
+                - crowdsec@file
                 - headers-standard@file
+                - rate-limit@file
                 - badger@http
             priority: 100
-            rule: Host(`kuma.nasflix.org`)
-            service: 4-service@http
+            rule: "Host(`wizarr.nasflix.org`)"
+            service: "7-service@http"
             tls:
-                certResolver: letsencrypt
-        10-router-auth:
+                certResolver: "letsencrypt"
+        8-router-auth:
             entryPoints:
                 - websecure
             middlewares:
+                - crowdsec@file
                 - headers-standard@file
+                - rate-limit@file
                 - badger@http
             priority: 100
-            rule: Host(`plex.nasflix.org`)
-            service: 10-service@http
+            rule: "Host(`jellyseerr.nasflix.org`)"
+            service: "8-service@http"
             tls:
-                certResolver: letsencrypt
-        13-router-auth:
-            entryPoints:
-                - websecure
-            middlewares:
-                - headers-standard@file
-                - badger@http
-            priority: 100
-            rule: Host(`overseerr.nasflix.org`)
-            service: 13-service@http
-            tls:
-                certResolver: letsencrypt
+                certResolver: "letsencrypt"
+    services:
+        1-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8096"
+        2-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8989"
+        3-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.60:8123"
+        4-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.2:80"
+        5-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:7878"
+        6-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8080"
+        7-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:5690"
+        8-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:5055"
+        9-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:9705"
+        10-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:11011"
+        11-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:6767"
+        12-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:9696"
+        13-service:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.102:3456"
+        14-service:
+            loadBalancer:
+                servers:
+                    - url: "http://traefik:8080"
+        15-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.102:8001"
+        16-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8082"
+        17-service@file:
+            loadBalancer:
+                servers: []
+        failover-demo:
+            failover:
+                fallback: "backup"
+                service: "main"
+        failover-service:
+            failover:
+                fallback: "backup-service@file"
+                service: "main-service@file"
+        failover-with-health:
+            failover:
+                fallback: "backup-service@file"
+                healthCheck: {}
+                service: "main-service@file"
+        full-mirror:
+            mirroring:
+                maxBodySize: 10240
+                mirrorBody: true
+                mirrors:
+                    - name: staging@file
+                      percent: 100
+                service: "production@file"
+        health-check:
+            loadBalancer:
+                healthCheck:
+                    interval: "10s"
+                    path: "/health"
+                    port: 8080
+                    scheme: "http"
+                    timeout: "3s"
+                servers:
+                    - url: "http://backend:8080"
+        mirror-with-health:
+            mirroring:
+                healthCheck: {}
+                mirrors:
+                    - name: test-service@file
+                      percent: 10
+                service: "main-service@file"
+        multi-server-http:
+            loadBalancer:
+                servers:
+                    - url: "http://server1:8080"
+                    - url: "http://server2:8080"
+        passhost-disabled:
+            loadBalancer:
+                passHostHeader: "false"
+                servers:
+                    - url: "http://backend:8080"
+        preserved-path:
+            loadBalancer:
+                servers:
+                    - preservePath: "true"
+                      url: "http://backend:8080/base"
+        response-forwarding:
+            loadBalancer:
+                responseForwarding:
+                    flushInterval: "1s"
+                servers:
+                    - url: "http://backend:8080"
+        simple-http:
+            loadBalancer:
+                servers:
+                    - url: "http://localhost:8080"
+        simple-lb:
+            loadBalancer:
+                servers:
+                    - url: "http://localhost:8080"
+        sticky-session:
+            loadBalancer:
+                servers:
+                    - url: "http://backend1:8080"
+                    - url: "http://backend2:8080"
+                sticky:
+                    cookie:
+                        httpOnly: true
+                        name: sticky_session
+                        secure: true
+        traffic-mirror:
+            mirroring:
+                mirrors:
+                    - name: test-service@file
+                      percent: 10
+                service: "main-service@file"
+        weighted-demo:
+            weighted:
+                services:
+                    - name: service1
+                      weight: 3
+                    - name: service2
+                      weight: 1
+        weighted-servers:
+            loadBalancer:
+                servers:
+                    - url: "http://primary:8080"
+                      weight: 3
+                    - url: "http://secondary:8080"
+                      weight: 1
+        weighted-service:
+            weighted:
+                services:
+                    - name: service1@file
+                      weight: 3
+                    - name: service2@file
+                      weight: 1
+        weighted-with-health:
+            weighted:
+                healthCheck: {}
+                services:
+                    - name: service1@file
+                      weight: 3
+                    - name: service2@file
+                      weight: 1
+        weighted-with-sticky:
+            weighted:
+                services:
+                    - name: service1@file
+                      weight: 1
+                    - name: service2@file
+                      weight: 1
+                sticky:
+                    cookie:
+                        name: lvl1
+tcp:
+    services:
+        tcp-proxy-protocol:
+            loadBalancer:
+                proxyProtocol:
+                    version: 1
+                servers:
+                    - address: "backend:8080"
+        tcp-service:
+            loadBalancer:
+                servers:
+                    - address: "backend:9000"
+        tcp-termination-delay:
+            loadBalancer:
+                servers:
+                    - address: "backend:8080"
+                terminationDelay: 200
+        tls-passthrough:
+            loadBalancer:
+                servers:
+                    - address: "backend:8443"
+                      tls: true
+        udp-service:
+            loadBalancer:
+                servers:
+                    - address: "backend:53"

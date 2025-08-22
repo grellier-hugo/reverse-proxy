@@ -1,96 +1,95 @@
+name: pangolin
+
 networks:
   default:
     driver: bridge
     name: pangolin
 
-secrets:
-  cloudflare_dns_api_token:
-    # API token for Cloudflare DNS updates.
-    file: secrets/traefik/cloudflare_dns_api_token
-  server_admin_email:
-    file: secrets/traefik/server_admin_email
-  server_admin_password:
-    file: secrets/traefik/server_admin_password
-  # crowdsec_bouncer_traefik_api_key:
-  #   file: secrets/crowdsec/bouncer_traefik_api_key
-
-
-# include:
-#   - compose/traefik.yaml 
 services:
   pangolin:
+    image: fosrl/pangolin:latest
     container_name: pangolin
-    healthcheck:
-      interval: 3s
-      retries: 5
-      test:
-        - CMD
-        - curl
-        - -f
-        - http://localhost:3001/api/v1/
-      timeout: 3s
-    image: fosrl/pangolin:1.2.0
-    ports:
-      - 3000:3000
-      - 3001:3001
-      - 3002:3002
     restart: unless-stopped
     volumes:
       - ./config:/app/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/"]
+      interval: "10s"
+      timeout: "10s"
+      retries: 15
+    labels:
+      - 'wud.tag.include=^\d+\.\d+\.\d+$$'
+      - 'wud.link.template=https://github.com/fosrl/pangolin/releases/tag/$${major}.$${minor}.$${patch}'
+
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+
+    ports:
+      - 443:443
+      - 80:80
+
+    depends_on:
+      crowdsec:
+        condition: service_healthy
+      pangolin:
+        condition: service_healthy
+    command:
+      - --configFile=/etc/traefik/traefik_config.yml
+    volumes:
+      - ./config/traefik:/etc/traefik:ro # Volume to store the Traefik configuration
+      - ./config/letsencrypt:/letsencrypt # Volume to store the Let's Encrypt certificates
+      - ./config/traefik/logs:/var/log/traefik # Volume to store Traefik logs
+      - ./config/traefik/plugins-storage:/plugins-storage:rw
+      - ./config/traefik/plugins-storage:/plugins-local:rw
+      - ./config/traefik/rules:/rules
+      - ./config/public_html:/var/www/html:ro 
+    environment:
+      CLOUDFLARE_DNS_API_TOKEN: "BHSv7kkTYJIxawKiuehr4QPbmTzXOJeStKGlrYw8"
+      TRAEFIK_BOUNCER_KEY: "lHVejTNjYvCWp/UX43X062b7nNyJWrCTadkLPGXmTtg"
+    labels:
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+      - 'wud.link.template=https://github.com/traefik/traefik/releases/tag/v$${major}.$${minor}.$${patch}'
 
   middleware-manager:
     image: hhftechnology/middleware-manager:latest
     container_name: middleware-manager
     restart: unless-stopped
-    depends_on:
-      pangolin:
-        condition: service_healthy
+    depends_on: # Optional, but good practice
+      - pangolin
+      - traefik 
     volumes:
-      - ./data:/data
-      - ./config/traefik/rules:/rules
-      - ./config/middleware-manager/templates.yaml:/app/config/templates.yaml  # Optional for custom templates
+      - ./config/mm_data:/data                             # For the SQLite database
+      - ./config/traefik/rules:/conf                     # MUST MATCH Traefik's rule directory
+      - ./config/mm_config/templates.yaml:/app/config/templates.yaml # Optional custom middleware templates
+      - ./config/mm_config/templates_services.yaml:/app/config/templates_services.yaml # Optional custom service templates
+      - ./config/mm_config/config.json:/app/config/config.json       # For data source settings
+      # Mount Traefik's static config directory for plugin management
+      - ./config/traefik:/etc/traefik 
     environment:
-      - PANGOLIN_API_URL=http://pangolin:3001/api/v1
-      - TRAEFIK_CONF_DIR=/rules 
+      - PANGOLIN_API_URL=http://pangolin:3001/api/v1 # If ACTIVE_DATA_SOURCE is pangolin
+      - TRAEFIK_API_URL=http://traefik:8080 # Or http://gerbil:8080 if Traefik API is via Gerbil
+      - TRAEFIK_CONF_DIR=/conf
       - DB_PATH=/data/middleware.db
       - PORT=3456
+      - ACTIVE_DATA_SOURCE=pangolin # Set to 'pangolin' or 'traefik'
+      # Path to Traefik's main static config file *inside this container* (due to volume mount)
+      - TRAEFIK_STATIC_CONFIG_PATH=/etc/traefik/traefik_config.yml
+      - PLUGINS_JSON_URL=https://raw.githubusercontent.com/hhftechnology/middleware-manager/traefik-int/plugin/plugins.json
+      # - DEBUG=true # Optional for development
     ports:
-      - 3456:3456
-
-  traefik:
-    command:
-      - --configFile=/etc/traefik/traefik_config.yml
-    container_name: traefik
-    depends_on:
-      pangolin:
-        condition: service_healthy
-    image: traefik:v3.3.5
-    ports:
-      - 443:443
-      - 80:80
-    restart: unless-stopped
-    environment:
-      TZ: $TZ
-      CLOUDFLARE_DNS_API_TOKEN: BHSv7kkTYJIxawKiuehr4QPbmTzXOJeStKGlrYw8 #/run/secrets/cloudflare_dns_api_token
-      # CROWDSEC_LAPI_KEY: file:///run/secrets/crowdsec_bouncer_traefik_api_key
-      USERS_SERVERADMIN_EMAIL: /run/secrets/server_admin_email
-      USERS_SERVERADMIN_PASSWORD: /run/secrets/server_admin_password
-    secrets:
-      - cloudflare_dns_api_token
-      # - crowdsec_bouncer_traefik_api_key
-      - server_admin_email
-      - server_admin_password
-    volumes:
-      - ./config/traefik:/etc/traefik:ro # Volume to store the Traefik configuration
-      - ./config/traefik/rules:/rules
-      - ./config/letsencrypt:/letsencrypt # Volume to store the Let's Encrypt certificates
-      - ./config/traefik/logs:/var/log/traefik # Volume to store Traefik logs
+      - "3456:3456"
+    labels:
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+      - 'wud.link.template=https://github.com/hhftechnology/middleware-manager/releases/tag/v$${major}.$${minor}.$${patch}'
+      
   crowdsec:
     command: -t # Add test config flag to verify configuration
     container_name: crowdsec
     environment:
       ACQUIRE_FILES: /var/log/traefik/*.log
-      COLLECTIONS: crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/whitelist-good-actors crowdsecurity/iptables crowdsecurity/linux
+      COLLECTIONS: crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/whitelist-good-actors crowdsecurity/iptables crowdsecurity/linux  crowdsecurity/nginx crowdsecurity/sshd crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules LePresidente/jellyfin
       ENROLL_INSTANCE_NAME: pangolin-crowdsec
       ENROLL_TAGS: docker
       GID: "1000"
@@ -100,6 +99,7 @@ services:
       # AGENT_USERNAME: file:///run/secrets/crowdsec_agent_username
       # AGENT_PASSWORD: file:///run/secrets/crowdsec_agent_password
       LOCAL_API_URL: $CROWDSEC_LOCAL_API_URL
+      # BOUNCER_KEY_TRAEFIK: lHVejTNjYvCWp/UX43X062b7nNyJWrCTadkLPGXmTtg
     # secrets:
       # - crowdsec_agent_username
       # - crowdsec_agent_password
@@ -114,8 +114,11 @@ services:
     image: crowdsecurity/crowdsec:latest
     labels:
       - traefik.enable=false # Disable traefik for crowdsec
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+      - 'wud.link.template=https://github.com/crowdsecurity/crowdsec/releases/tag/v$${major}.$${minor}.$${patch}'
+
     ports:
-      - 8080:8080
+      - 7070:8080
       - 6060:6060 # metrics endpoint for prometheus
     restart: unless-stopped
     volumes:
@@ -123,9 +126,56 @@ services:
       # crowdsec container data
       - ./config/crowdsec/config:/etc/crowdsec # crowdsec config
       - ./config/crowdsec/data:/var/lib/crowdsec/data # crowdsec db
-       # log bind mounts into crowdsec
-      - ./config/crowdsec_logs/cloudserver:/logs/cloudserver:ro
-      - ./config/crowdsec_logs/auth.log:/var/log/auth.log:ro
-      - ./config/crowdsec_logs/syslog:/var/log/syslog:ro
-      - ./config/crowdsec_logs:/var/log
-      - ./config/traefik/logs:/var/log/traefik
+       # log bind mounts into crowd
+      - ./config/crowdsec/logs/cloudserver:/logs/cloudserver:ro
+      - ./config/crowdsec/logs/auth.log:/var/log/auth.log:ro
+      - ./config/crowdsec/logs/syslog:/var/log/syslog:ro
+      - ./config/crowdsec/logs:/var/log
+      - ./config/traefik/logs:/var/log/traefik:ro
+      - /var/log/journal:/var/log/host:ro
+
+  apprise-api:
+    image: lscr.io/linuxserver/apprise-api:latest
+    container_name: apprise-api
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - APPRISE_ATTACH_SIZE=0 #optional
+    volumes:
+      - ./config/apprise-api/config:/config
+      - ./config/apprise-api/attachments:/attachments #optional
+    ports:
+      - 8001:8000
+    restart: unless-stopped
+    labels:
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+      - 'wud.link.template=https://github.com/caronc/apprise-api/releases/tag/v$${major}.$${minor}.$${patch}'
+
+  whatsupdocker:
+    image: getwud/wud
+    container_name: wud
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 3000:3000
+    environment:
+      - TZ=${TZ:-UTC}
+      - PUID=${UID:-1000}
+      - PGID=${GID:-100}
+      - WUD_TRIGGER_DISCORD_1_URL=https://discord.com/api/webhooks/1405175505849811005/hfX9WMIdKfIjZIGfJeHywycDW-dRawq97JFENa_irllsco2ZgCdKSwzOv4qlqGPfnWOv
+      - WUD_TRIGGER_DISCORD_1_BOTUSERNAME="WUD Bot"
+      - WUD_TRIGGER_DOCKER_2_PRUNE=true
+    healthcheck:
+      test: curl --fail http://localhost:${WUD_SERVER_PORT:-3000}/health || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - 'wud.tag.include=^\d+\.\d+\.\d+$$'
+      - 'wud.link.template=https://github.com/getwud/wud/releases/tag/$${major}.$${minor}.$${patch}'

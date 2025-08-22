@@ -14,3 +14,10 @@ secrets/
 .backup
 acme.json
 config/crowdsec/
+config/traefik/plugins-storage/archives/*
+config/apprise-api/config/*
+old/*
+test/*
+*.zip
+*.bak*
+*.tmp*

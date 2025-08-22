@@ -8,92 +8,116 @@ providers:
     pollInterval: "5s"
   file:
     filename: "/etc/traefik/dynamic_config.yml"
-    # directory: "/rules"
-    # watch: true
+    directory: "/rules"
+    watch: true
 
 experimental:
   plugins:
     badger:
       moduleName: "github.com/fosrl/badger"
-      version: "v1.1.0"
-    crowdsec: # CrowdSec plugin configuration added
-      moduleName: "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
-      version: "v1.4.2"
+      version: "v1.2.0"
+    crowdsec-bouncer-traefik:
+        moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+        version: v1.4.2
+    # fail2ban:
+    #     moduleName: github.com/tomMoulard/fail2ban
+    #     version: v0.8.5
+    geoblock:
+      moduleName: github.com/PascalMinder/geoblock
+      version: v0.3.2
 
 log:
-  level: "info"
-  # format: "json" # Log format changed to json for better parsing
+  level: "INFO"
+  format: "json"
+  maxSize: 100
+  maxBackups: 3
+  maxAge: 3
+  compress: true
 
-accessLog: # We enable access logs as json
-  filePath: "/var/log/traefik/access.log"
-  format: json
-  filters:
-    statusCodes:
-      - "204-299"  # Success codes
-      - "400-499"  # Client errors
-      - "500-599"  # Server errors
-    retryAttempts: true
-    minDuration: "100ms"  # Increased to focus on slower requests
-  bufferingSize: 100      # Add buffering for better performance
+accessLog:
+  bufferingSize: 100
   fields:
-    defaultMode: drop     # Start with dropping all fields
-    names:
-      ClientAddr: keep # Keep client address for IP tracking
-      ClientHost: keep  # Keep client host for IP tracking
-      RequestMethod: keep # Keep request method for tracking
-      RequestPath: keep # Keep request path for tracking
-      RequestProtocol: keep # Keep request protocol for tracking
-      DownstreamStatus: keep # Keep downstream status for tracking
-      DownstreamContentSize: keep # Keep downstream content size for tracking
-      Duration: keep # Keep request duration for tracking
-      ServiceName: keep # Keep service name for tracking
-      StartUTC: keep # Keep start time for tracking
-      TLSVersion: keep # Keep TLS version for tracking
-      TLSCipher: keep # Keep TLS cipher for tracking
-      RetryAttempts: keep # Keep retry attempts for tracking
+    defaultMode: drop
     headers:
-      defaultMode: drop # Start with dropping all headers
+      defaultMode: drop
       names:
-        User-Agent: keep # Keep user agent for tracking
-        X-Real-Ip: keep # Keep real IP for tracking
-        X-Forwarded-For: keep # Keep forwarded IP for tracking
-        X-Forwarded-Proto: keep # Keep forwarded protocol for tracking
-        Content-Type: keep # Keep content type for tracking
-        Authorization: redact  # Redact sensitive information
-        Cookie: redact        # Redact sensitive information
+        Authorization: redact
+        Content-Type: keep
+        Cookie: redact
+        User-Agent: keep
+        X-Forwarded-For: keep
+        X-Forwarded-Proto: keep
+        X-Real-Ip: keep
+    names:
+      ClientAddr: keep
+      ClientHost: keep
+      DownstreamContentSize: keep
+      DownstreamStatus: keep
+      Duration: keep
+      RequestMethod: keep
+      RequestPath: keep
+      RequestProtocol: keep
+      RetryAttempts: keep
+      ServiceName: keep
+      StartUTC: keep
+      TLSCipher: keep
+      TLSVersion: keep
+  filePath: /var/log/traefik/access.log
+  filters:
+    minDuration: 100ms
+    retryAttempts: true
+    statusCodes:
+      - 200-299
+      - 400-499
+      - 500-599
+  format: json
 
 certificatesResolvers:
   letsencrypt:
     acme:
-      caServer: "https://acme-v02.api.letsencrypt.org/directory"
-      storage: "/letsencrypt/acme.json"
-      # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
-      # httpChallenge:
-      #   entryPoint: web
-      dnsChallenge: 
-        provider: cloudflare
-        resolvers: 1.1.1.1:53,1.0.0.1:53
-        propagation:
-          delayBeforeChecks: 90s
+      dnsChallenge:
+        provider: "cloudflare" # your DNS provider
+        # see https://doc.traefik.io/traefik/https/acme/#providers
       email: "admin@nasflix.org"
-
-global:
-  checkNewVersion: true
-  sendAnonymousUsage: false
+      storage: "/letsencrypt/acme.json"
+      caServer: "https://acme-v02.api.letsencrypt.org/directory"
 
 entryPoints:
   web:
     address: ":80"
   websecure:
     address: ":443"
-    # forwardedHeaders:
-    #   trustedIPs: "{{ env "CLOUDFLARE_IPS" }}, {{ env "LOCAL_IPS" }}"
+    forwardedHeaders:
+      trustedIPs: &trustedIps
+        # Start of Cloudlare's public IP list
+        - 103.21.244.0/22
+        - 103.22.200.0/22
+        - 103.31.4.0/22
+        - 104.16.0.0/13
+        - 104.24.0.0/14
+        - 108.162.192.0/18
+        - 131.0.72.0/22
+        - 141.101.64.0/18
+        - 162.158.0.0/15
+        - 172.64.0.0/13
+        - 173.245.48.0/20
+        - 188.114.96.0/20
+        - 190.93.240.0/20
+        - 197.234.240.0/22
+        - 198.41.128.0/17
+        - 2400:cb00::/32
+        - 2606:4700::/32
+        - 2803:f800::/32
+        - 2405:b500::/32
+        - 2405:8100::/32
+        - 2a06:98c0::/29
+        - 2c0f:f248::/32
     transport:
       respondingTimeouts:
         readTimeout: "30m"
     http:
       tls:
-        certResolver: letsencrypt
+        certResolver: "letsencrypt"
         options: tls-opts@file
         domains:
           - main: "nasflix.org"
@@ -102,9 +126,6 @@ entryPoints:
           - main: "nasflix.local"
             sans:
               - "*.nasflix.local"
-      # middlewares: 
-      #   - crowdsec@file
 
 serversTransport:
   insecureSkipVerify: true
-
