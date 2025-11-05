@@ -6,21 +6,9 @@ http:
                     - GET
                     - OPTIONS
                 browserXssFilter: true
-                contentTypeNosniff: true
-                customFrameOptionsValue: "SAMEORIGIN"
-                customResponseHeaders:
-                    Content-Security-Policy: default-src 'self'; frame-ancestors 'self' http://jellyfin.nasflix.org; object-src 'none'; base-uri 'self'; form-action 'self'
-                    Server: ""
-                    X-Frame-Options: SAMEORIGIN
-                    X-Robots-Tag: none,noarchive,nosnippet,notranslate,noimageindex
-                forceSTSHeader: true
-                hostsProxyHeaders:
-                    - X-Forwarded-Host
                 permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()"
                 referrerPolicy: "same-origin"
                 sslForceHost: true
-                sslProxyHeaders:
-                    X-Forwarded-Proto: https
                 sslRedirect: true
                 stsIncludeSubdomains: true
                 stsPreload: true
@@ -53,10 +41,10 @@ http:
                     - admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/
         buffering:
             buffering:
-                maxRequestBodyBytes: 5e+06
-                maxResponseBodyBytes: 5e+06
-                memRequestBodyBytes: 2e+06
-                memResponseBodyBytes: 2e+06
+                maxRequestBodyBytes: "5000000"
+                maxResponseBodyBytes: "5000000"
+                memRequestBodyBytes: "2000000"
+                memResponseBodyBytes: "2000000"
                 retryExpression: "IsNetworkError() && Attempts() < 2"
         circuit-breaker:
             circuitBreaker:
@@ -241,125 +229,183 @@ http:
             forwardAuth:
                 address: "http://tinyauth:10000/api/auth/traefik"
     routers:
-        1-router-auth:
+        1-Jellyfin-router-auth:
             entryPoints:
                 - websecure
             middlewares:
-                - 9df695b0934a915a@file
-                - rate-limit@file
                 - badger@http
-            priority: 100
+            priority: 200
             rule: "Host(`jellyfin.nasflix.org`)"
-            service: "1-service@http"
+            service: "1-Jellyfin-service@http"
             tls:
                 certResolver: "letsencrypt"
-        3-router-auth:
+        3-Home-Assistant-router-auth:
             entryPoints:
                 - websecure
             middlewares:
-                - crowdsec@file
-                - headers-standard@file
-                - rate-limit@file
                 - badger@http
-            priority: 100
+            priority: 200
             rule: "Host(`hass.nasflix.org`)"
-            service: "3-service@http"
+            service: "3-Home-Assistant-service@http"
             tls:
                 certResolver: "letsencrypt"
-        7-router-auth:
+        7-Wizarr-router-auth:
             entryPoints:
                 - websecure
             middlewares:
-                - crowdsec@file
-                - headers-standard@file
-                - rate-limit@file
                 - badger@http
-            priority: 100
+            priority: 200
             rule: "Host(`wizarr.nasflix.org`)"
-            service: "7-service@http"
+            service: "7-Wizarr-service@http"
             tls:
                 certResolver: "letsencrypt"
-        8-router-auth:
+        8-Jellyseerr-router-auth:
             entryPoints:
                 - websecure
             middlewares:
-                - crowdsec@file
-                - headers-standard@file
-                - rate-limit@file
                 - badger@http
-            priority: 100
+            priority: 200
             rule: "Host(`jellyseerr.nasflix.org`)"
-            service: "8-service@http"
+            service: "8-Jellyseerr-service@http"
             tls:
                 certResolver: "letsencrypt"
     services:
+        1-Jellyfin-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8096"
         1-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:8096"
+        2-Sonarr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8989"
         2-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:8989"
+        3-Home-Assistant-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.60:8123"
         3-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.60:8123"
+        4-Adguard-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.2:80"
         4-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.2:80"
+        5-Radarr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:7878"
         5-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:7878"
+        6-Qbittorrent-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8080"
         6-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:8080"
+        7-Wizarr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:5690"
         7-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:5690"
+        8-Jellyseerr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:5055"
         8-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:5055"
+        9-Huntarr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:9705"
         9-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:9705"
+        10-Cleanuparr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:11011"
         10-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:11011"
+        11-Bazarr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:6767"
         11-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:6767"
+        12-Prowlarr-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:9696"
         12-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:9696"
+        13-Pangolin-Middleware-Manager-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.102:3456"
         13-service:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.102:3456"
+        14-Traefik-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://traefik:8080"
         14-service:
             loadBalancer:
                 servers:
                     - url: "http://traefik:8080"
+        15-Apprise-API-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.102:8001"
         15-service@file:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.102:8001"
+        16-Joal-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.151:8082"
         16-service@file:
             loadBalancer:
                 servers:
                     - url: "http://192.168.1.151:8082"
         17-service@file:
             loadBalancer:
-                servers: []
+                servers:
+                    - url: "http://192.168.1.187:3000"
+        18-service@file:
+            loadBalancer:
+                servers:
+                    - url: "http://192.168.1.152:8016"
         failover-demo:
             failover:
                 fallback: "backup"
